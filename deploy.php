@@ -1,45 +1,71 @@
 <?php
+
 namespace Deployer;
 
 require 'recipe/laravel.php';
+require 'recipe/rsync.php';
 
-// Project name
-set('application', 'NomeProjeto');
+set('application', 'My App');
+set('ssh_multiplexing', true);
 
-// Project repository
-set('repository', 'git@github.com:yvescleuder/deploy-automatic.git');
-
-// [Optional] Allocate tty for git clone. Default value is false.
-set('git_tty', true); 
-
-// Shared files/dirs between deploys 
-add('shared_files', []);
-add('shared_dirs', []);
-
-// Writable dirs by web server 
-add('writable_dirs', []);
+set(
+    'rsync_src',
+    function () {
+        return __DIR__;
+    }
+);
 
 
-// Hosts
+add(
+    'rsync',
+    [
+        'exclude' => [
+            '.git',
+            '/.env',
+            '/storage/',
+            '/vendor/',
+            '/node_modules/',
+            '.github',
+            'deploy.php',
+        ],
+    ]
+);
 
-//host('project.com')
-//    ->set('deploy_path', '~/{{application}}');
+task(
+    'deploy:secrets',
+    function () {
+        file_put_contents(__DIR__ . '/.env', getenv('DOT_ENV'));
+        upload('.env', get('deploy_path') . '/shared');
+    }
+);
 
 host('34.95.245.114')
     ->user('root')
-    ->identityFile('~/.ssh/id_ed25519')
     ->set('deploy_path', '/var/www/deploy-automatic');
-    
-// Tasks
 
-//task('build', function () {
-//    run('cd {{release_path}} && build');
-//});
-
-// [Optional] if deploy fails automatically unlock.
 after('deploy:failed', 'deploy:unlock');
 
-// Migrate database before symlink new release.
+desc('Deploy the application');
 
-//before('deploy:symlink', 'artisan:migrate');
-
+task(
+    'deploy',
+    [
+        'deploy:info',
+        'deploy:prepare',
+        'deploy:lock',
+        'deploy:release',
+        'rsync',
+        'deploy:secrets',
+        'deploy:shared',
+        'deploy:vendors',
+        'deploy:writable',
+        'artisan:storage:link',
+        'artisan:view:cache',
+        'artisan:config:cache',
+        'artisan:migrate',
+        'artisan:queue:restart',
+        'deploy:symlink',
+        'deploy:unlock',
+        'cleanup',
+    ]
+);
